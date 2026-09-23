@@ -1,0 +1,167 @@
+# Implementation Plan: User Authentication (Login / Signup) & State Management
+
+This plan details the design and step-by-step implementation for adding user authentication (Sign Up, Log In, Session Persistence, and Route Protection) with React Context state management and Express JWT/bcrypt backend.
+
+---
+
+## 1. Architectural Overview
+
+```text
+                                 [ BROWSER ]
+                                      │
+              ┌───────────────────────┴───────────────────────┐
+              ▼                                               ▼
+     Unauthenticated User                            Authenticated User
+  (Browse Home, Login, Signup)                 (Analyze, Dashboard, History, Profile)
+              │                                               │
+              └───────────────► [ AuthContext ] ◄─────────────┘
+                                (React Context)
+                                  ├─ user: { id, name, email }
+                                  ├─ token: JWT (in localStorage)
+                                  ├─ login(email, password)
+                                  ├─ register(name, email, password)
+                                  └─ logout()
+                                      │
+                                      ▼
+                             [ Axios Interceptor ]
+                      (Attaches `Authorization: Bearer <token>`)
+                                      │
+                                      ▼ HTTP /api/auth/*
+                             [ Express Backend ]
+                                      │
+              ┌───────────────────────┼───────────────────────┐
+              ▼                       ▼                       ▼
+     POST /api/auth/register    POST /api/auth/login    GET /api/auth/me
+              │                       │                       │
+              └───────────────────────┼───────────────────────┘
+                                      ▼
+                            [ User Model (Mongoose) ]
+                           (bcrypt password hashing)
+                                      ▼
+                            [ MongoDB (users coll) ]
+```
+
+---
+
+## 2. User Review & Decisions
+
+> [!IMPORTANT]
+> **Guest vs. Protected Analysis Policy**:
+> We can support either:
+> 1. **Hybrid/Optional Mode (Recommended)**: Visitors can still test the demo and analyze a leaf without signing in (stored as anonymous), while signed-in users have their scans tied to their account so their history and analytics are personal.
+> 2. **Strict Mode**: Leaf analysis, history, and dashboard require signing in first.
+> *In our proposed plan, we implement the Protected Route architecture while keeping the backend flexible (optional auth supported on analyze, protected on user profile).*
+
+---
+
+## 3. Proposed Changes
+
+### 3.1. Application Backend (`server/`)
+
+#### Dependencies to Add:
+- `bcryptjs`: Password hashing (pure JS, cross-platform stability on Windows).
+- `jsonwebtoken`: Secure JWT token creation and verification.
+
+#### [NEW] [server/src/models/User.js](file:///c:/Users/Dinkar%20Tiwari/OneDrive/Documents/Desktop/Final_year_project/server/src/models/User.js)
+- Fields:
+  - `name`: String, required, trimmed.
+  - `email`: String, required, unique, lowercase, trimmed, email regex validated.
+  - `password`: String, required, min 6 characters, `select: false` (never returned in queries by default).
+  - `createdAt`: Date.
+- Methods:
+  - `matchPassword(enteredPassword)`: Compares candidate password against bcrypt hash.
+  - Pre-save hook: Automatically hashes password with salt before saving if modified.
+
+#### [NEW] [server/src/utils/jwt.js](file:///c:/Users/Dinkar%20Tiwari/OneDrive/Documents/Desktop/Final_year_project/server/src/utils/jwt.js)
+- `generateToken(userId)`: Generates signed JWT with configurable expiration (default: 7 days).
+- `verifyToken(token)`: Verifies and decodes JWT payload.
+
+#### [NEW] [server/src/middleware/authMiddleware.js](file:///c:/Users/Dinkar%20Tiwari/OneDrive/Documents/Desktop/Final_year_project/server/src/middleware/authMiddleware.js)
+- `protect`: Extracts `Bearer <token>` from `Authorization` header, decodes user ID, retrieves `User` from MongoDB, and attaches `req.user`. Returns 401 if missing or invalid.
+- `optionalAuth`: Checks for token; if valid, populates `req.user`, but does not reject the request if absent.
+
+#### [NEW] [server/src/controllers/authController.js](file:///c:/Users/Dinkar%20Tiwari/OneDrive/Documents/Desktop/Final_year_project/server/src/controllers/authController.js)
+- `register(req, res)`: Validates name, email, password; checks existing email; creates user; returns JWT token + user object.
+- `login(req, res)`: Validates credentials; checks password with `bcryptjs`; returns JWT token + user object.
+- `getMe(req, res)`: Returns current user data (`_id`, `name`, `email`, `createdAt`).
+
+#### [NEW] [server/src/routes/authRoutes.js](file:///c:/Users/Dinkar%20Tiwari/OneDrive/Documents/Desktop/Final_year_project/server/src/routes/authRoutes.js)
+- Routes:
+  - `POST /api/auth/register`
+  - `POST /api/auth/login`
+  - `GET /api/auth/me` (protected)
+
+#### [MODIFY] [server/src/models/Prediction.js](file:///c:/Users/Dinkar%20Tiwari/OneDrive/Documents/Desktop/Final_year_project/server/src/models/Prediction.js)
+- Add `user` field (`type: mongoose.Schema.Types.ObjectId, ref: 'User', index: true, default: null`) to associate predictions with accounts.
+
+#### [MODIFY] [server/src/controllers/predictionController.js](file:///c:/Users/Dinkar%20Tiwari/OneDrive/Documents/Desktop/Final_year_project/server/src/controllers/predictionController.js)
+- In `analyzeImage`: Set `user: req.user?._id || null`.
+- In `getPredictions` and `getPredictionStats`: If authenticated, scope queries to `req.user._id` (or support user-filtered queries).
+
+#### [MODIFY] [server/src/app.js](file:///c:/Users/Dinkar%20Tiwari/OneDrive/Documents/Desktop/Final_year_project/server/src/app.js)
+- Mount `authRoutes` at `/api/auth`.
+
+---
+
+### 3.2. Frontend Client (`client/`)
+
+#### [NEW] [client/src/context/AuthContext.jsx](file:///c:/Users/Dinkar%20Tiwari/OneDrive/Documents/Desktop/Final_year_project/client/src/context/AuthContext.jsx)
+- React Context providing:
+  - State: `user`, `token`, `loading`, `isAuthenticated`.
+  - Actions:
+    - `login(email, password)`: Calls API, saves token to `localStorage`, sets user.
+    - `register(name, email, password)`: Calls API, saves token, sets user.
+    - `logout()`: Clears `localStorage`, resets user state, navigates to `/`.
+  - Initialization effect: Reads `citrus_auth_token` from `localStorage` on boot and calls `/api/auth/me` to hydrate the user profile.
+
+#### [MODIFY] [client/src/services/api.js](file:///c:/Users/Dinkar%20Tiwari/OneDrive/Documents/Desktop/Final_year_project/client/src/services/api.js)
+- Add request interceptor: Automatically appends `Authorization: Bearer <token>` from `localStorage` to all API requests.
+- Add response interceptor handling for 401 Unauthorized: Trigger logout if a saved token has expired.
+- Add auth API methods: `register`, `login`, `getMe`.
+
+#### [NEW] [client/src/components/common/ProtectedRoute.jsx](file:///c:/Users/Dinkar%20Tiwari/OneDrive/Documents/Desktop/Final_year_project/client/src/components/common/ProtectedRoute.jsx)
+- Guard wrapper that renders children if `isAuthenticated`, or redirects to `/login` with previous location saved in router state.
+
+#### [NEW] [client/src/pages/LoginPage.jsx](file:///c:/Users/Dinkar%20Tiwari/OneDrive/Documents/Desktop/Final_year_project/client/src/pages/LoginPage.jsx)
+- Responsive card with email and password inputs, show/hide password toggle, error messaging, submit loading state, and link to register.
+
+#### [NEW] [client/src/pages/RegisterPage.jsx](file:///c:/Users/Dinkar%20Tiwari/OneDrive/Documents/Desktop/Final_year_project/client/src/pages/RegisterPage.jsx)
+- Sign-up form with name, email, password, confirm password validation, error alerts, and link to login.
+
+#### [MODIFY] [client/src/components/layout/Navbar.jsx](file:///c:/Users/Dinkar%20Tiwari/OneDrive/Documents/Desktop/Final_year_project/client/src/components/layout/Navbar.jsx)
+- Dynamic right-side navigation:
+  - When logged out: "Sign In" and "Sign Up" action buttons.
+  - When logged in: User avatar with initials, user name, and "Sign Out" button.
+
+#### [MODIFY] [client/src/styles/components.css](file:///c:/Users/Dinkar%20Tiwari/OneDrive/Documents/Desktop/Final_year_project/client/src/styles/components.css)
+- Add styling tokens for auth cards, input groups, floating labels, password toggles, and user badges.
+
+#### [MODIFY] [client/src/App.jsx](file:///c:/Users/Dinkar%20Tiwari/OneDrive/Documents/Desktop/Final_year_project/client/src/App.jsx)
+- Wrap application inside `<AuthProvider>`.
+- Register routes: `/login` and `/register`.
+
+---
+
+## 4. Verification Plan
+
+### Automated Backend Tests
+1. Unit and integration tests in `server/tests/authTests.js`:
+   - Registration with valid data $\rightarrow$ 201 Created + Token
+   - Registration with duplicate email $\rightarrow$ 400 Bad Request
+   - Registration with invalid email / short password $\rightarrow$ 400 Bad Request
+   - Login with correct credentials $\rightarrow$ 200 OK + Token
+   - Login with incorrect password $\rightarrow$ 401 Unauthorized
+   - Access `GET /api/auth/me` with valid token $\rightarrow$ 200 OK + user profile
+   - Access `GET /api/auth/me` without token $\rightarrow$ 401 Unauthorized
+2. Existing test suite verification:
+   - Run `npm test` to ensure existing prediction and analysis routes continue passing.
+
+### Frontend Verification & UI Validation
+1. Build verification: `npm run build` in `client/` to verify zero compile warnings/errors.
+2. End-to-end user flows:
+   - Register a new account (e.g. `farmer@example.com`).
+   - Confirm token is stored in `localStorage` and Navbar updates to show user initials.
+   - Refresh page: verify session persists.
+   - Log out: verify state clears and Navbar returns to login/signup.
+   - Log back in with valid credentials.
+   - Log in with invalid credentials: verify readable error message.

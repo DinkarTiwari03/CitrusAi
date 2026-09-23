@@ -1,0 +1,22 @@
+client: npm run dev
+server: npm start
+
+# 1. Activate venv
+.\.venv\Scripts\Activate.ps1
+
+# 2. Change directory
+cd citrus_project
+
+# 3. Run Uvicorn
+uvicorn api:app --host 127.0.0.1 --port 8000 --reload
+
+---------------------------------------------------------------
+after above if now working properly then  use following:
+---------------------------------------------------------------
+.\.venv\Scripts\python.exe -m uvicorn citrus_project.api:app --host 127.0.0.1 --port 8000 --reload
+
+.venv\Scripts\python.exe -m uvicorn citrus_project.api:app --host 127.0.0.1 --port 8000 --reload
+
+..\.venv\Scripts\python.exe -m uvicorn api:app --host 127.0.0.1 --port 8000 --reload
+
+..\.venv\Scripts\python.exe -m uvicorn api:app --host 127.0.0.1 --port 8000 --reload
