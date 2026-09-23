@@ -1,0 +1,25 @@
+General Citrus Management
+
+Regular monitoring:
+Inspect citrus leaves, shoots and fruit regularly. Early detection can help identify disease development before symptoms become widespread.
+
+Sanitation:
+Remove or manage infected plant material according to locally recommended agricultural practices. Clean equipment when moving between affected and healthy plants where appropriate.
+
+Canopy management:
+Maintain appropriate canopy conditions to support airflow and reduce prolonged leaf wetness.
+
+Planting material:
+Use healthy and disease-free planting material whenever possible.
+
+Disease management:
+Disease management should combine monitoring, sanitation, cultural practices and locally approved treatments.
+
+Chemical treatments:
+Chemical recommendations must be based on locally approved products, crop conditions, disease identification, application instructions and label requirements.
+
+Safety:
+Farmers should follow product labels, local regulations and advice from qualified agricultural extension personnel before applying pesticides.
+
+Severity interpretation:
+A larger estimated affected leaf area indicates greater visible disease burden. However, image-based severity estimation is an estimate and should be combined with field inspection.

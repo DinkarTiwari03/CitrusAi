@@ -1,0 +1,9 @@
+***use this command to give imput image and pridcit the result***
+python predict.py --image "pnn.png"
+
+/// for the rag ///
+python test_agent.py
+python retriever.py
+
+
+
